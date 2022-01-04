@@ -1,0 +1,2 @@
+SET SERVERNAME=%~n0
+C:\Systems\MasterTemplate.cmd %SERVERNAME%
