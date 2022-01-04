@@ -1,0 +1,195 @@
+MODE CON COLS=100 LINES=24
+@ECHO OFF
+SET SERVERNAME=%*
+
+ECHO Update Script v2.2
+ECHO.
+ECHO This script is installing Windows updates for server %SERVERNAME%. 
+ECHO If this is not what you meant to do press CTRL-C now.
+TIMEOUT /T 10
+
+IF EXIST .\%SERVERNAME%.TXT DEL .\%SERVERNAME%.TXT
+IF EXIST .\%SERVERNAME%A.TXT DEL .\%SERVERNAME%A.TXT
+IF EXIST \\%SERVERNAME%\C$\Systems\WindowsUpdateScript-v1.1.vbs GOTO LAUNCHUPDATES
+
+ROBOCOPY C:\Systems\ \\%SERVERNAME%\C$\Systems\ WindowsUpdateScript-v1.1.vbs
+
+:LAUNCHUPDATES
+
+psexec -accepteula -s \\%SERVERNAME% cscript C:\Systems\WindowsUpdateScript-v1.1.vbs
+IF %ERRORLEVEL% == 0 GOTO REBOOTCHOICE
+IF %ERRORLEVEL% == 255 GOTO NOUPDATES
+GOTO ERROR
+
+:REBOOTCHOICE
+
+COLOR 17
+ECHO.
+ECHO Windows Updates were successfully installed.
+ECHO.
+ECHO Do you Wish to reboot the server now?
+
+SET /P REBOOT="Choose Y or N...>"
+
+IF %REBOOT%==Y GOTO REBOOT
+IF %REBOOT%==y GOTO REBOOT
+
+GOTO NOREBOOT
+
+:REBOOT
+
+COLOR 07
+ECHO.
+ECHO "Rebooting Server %SERVERNAME%"
+
+shutdown /r /m \\%SERVERNAME% /t 10 /f /d p:2:3 /c "Installing Updates"
+GOTO SENT
+
+:NOREBOOT
+
+COLOR 60
+ECHO.
+ECHO "You have chosen not to reboot %SERVERNAME% at this time.  Please ensure that a reboot is arranged to complete the install of Windows updates"
+
+pause
+GOTO END
+
+:NOUPDATES
+
+COLOR 27
+ECHO.
+ECHO "There were no updates to install"
+ECHO.
+
+pause
+GOTO END
+
+:ERROR
+
+COLOR 47
+ECHO.
+ECHO "There was a problem with the updates on %SERVERNAME%, please investigate and install manually"
+
+pause
+GOTO END
+
+:SENT
+SET /A COUNT=0
+
+ECHO.
+ECHO.
+echo **********************************************************
+echo **********************************************************
+echo ******************                      ******************
+echo ******************   SHUTDOWN COMMAND   ******************
+echo ******************       SENT TO        ******************
+echo ******************     %SERVERNAME%     ******************
+echo ******************    AT%TIME%     ******************
+echo ******************                      ******************
+echo ******************     PLEASE WAIT      ******************
+echo ******************                      ******************
+echo **********************************************************
+echo **********************************************************
+
+
+:SHUTDOWN
+PING %SERVERNAME% -n 1|find "Request timed out." >nul
+if %errorlevel% NEQ 0 GOTO SHUTDOWN
+SET /A COUNT=%COUNT%+1
+IF %COUNT% LSS 2 GOTO SHUTDOWN
+
+CLS
+ECHO.
+ECHO.
+echo **********************************************************
+echo **********************************************************
+echo ******************                      ******************
+echo ******************      %SERVERNAME%    ******************
+echo ******************      APPEARS  TO     ******************
+echo ******************     HAVE SHUTDOWN    ******************
+echo ******************                      ******************
+echo ******************      PLEASE WAIT     ******************
+echo ******************                      ******************
+echo **********************************************************
+echo **********************************************************
+
+SET /A COUNT=0
+CD
+:DOWN
+PING %SERVERNAME% -n 1|find "(0%% loss)" >nul
+if %errorlevel%==0 SET /A COUNT=%COUNT%+1
+IF %COUNT% LSS 10 GOTO DOWN
+
+CLS
+ECHO.
+ECHO.
+echo **********************************************************
+echo **********************************************************
+echo ******************                      ******************
+echo ******************      %SERVERNAME%    ******************
+echo ******************      APPEARS  TO     ******************
+echo ******************      BE  BOOTING     ******************
+echo ******************                      ******************
+echo ******************      PLEASE WAIT     ******************
+echo ******************                      ******************
+echo **********************************************************
+echo **********************************************************
+
+
+SET /A COUNT=0
+CD
+
+:CHECK
+TIMEOUT /T 120 /NOBREAK >nul
+PSINFO \\%SERVERNAME% >.\%SERVERNAME%.TXT 2>&1
+FIND "Uptime:" .\%SERVERNAME%.TXT > .\%SERVERNAME%A.TXT
+DEL .\%SERVERNAME%.TXT
+FINDSTR /C:"0 days 0 hours" .\%SERVERNAME%A.TXT
+if %errorlevel%==0 GOTO DONE
+SET /A COUNT=%COUNT%+1
+IF %COUNT% LSS 3 GOTO CHECK
+GOTO FAIL
+
+:DONE
+CLS
+ECHO.
+ECHO.
+echo **********************************************************
+echo **********************************************************
+echo **********                                      **********
+echo ********** %SERVERNAME% APPEARS TO HAVE REBOOTED **********
+echo **********                                      **********
+echo **********          CURRENT UPTIME IS           **********
+echo **********                                      **********
+FOR /F "skip=2 tokens=2,3,4,5,6,7,8,9" %%i IN (.\%SERVERNAME%A.TXT) DO echo **********  %%i %%j %%k %%l %%m %%n %%o %%p  **********
+echo **********                                      **********
+echo **********************************************************
+echo **********************************************************
+ECHO.
+PAUSE
+DEL .\%SERVERNAME%A.TXT
+GOTO END
+
+:FAIL
+CLS
+ECHO.
+echo **********************************************************
+echo **********************************************************
+echo **********                                      **********
+echo **********   %SERVERNAME% MAY NOT HAVE REBOOTED  **********
+echo **********                                      **********
+echo **********          CURRENT UPTIME IS           **********
+echo **********                                      **********
+FOR /F "skip=2 tokens=2,3,4,5,6,7,8,9" %%i IN (.\%SERVERNAME%A.TXT) DO echo ********** %%i %%j %%k %%l %%m %%n %%o %%p **********
+echo **********                                      **********
+echo **********       INVESTIGATION  REQUIRED        **********
+echo **********                                      **********
+echo **********************************************************
+echo **********************************************************
+ECHO.
+PAUSE
+DEL .\%SERVERNAME%A.TXT
+GOTO END
+
+:END
+Exit
